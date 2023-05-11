@@ -1,0 +1,113 @@
+
+计算机如何实现通信的？
+
+
+客户端/服务器架构
+1.硬件C/S架构(打印机)
+
+2.软件C/S架构
+
+　　互联网中处处是C/S架构
+
+　　如某某网站是服务端，你的浏览器是客户端（B/S架构也是C/S架构的一种）
+
+　　腾讯作为服务端为你提供视频，你得下个腾讯视频客户端才能看它的视频）
+
+C/S架构与socket的关系：
+
+我们学习socket就是为了完成C/S架构的开发
+
+各种协议就是数据流的交换，只不过交换的方式不一样，比如ssh就是连到远程机器上就是执行一条命令然后远程给反馈，ftp是连上之后传输文件的数据流
+其实都是数据流的交换，就是交换的工作方式不一样
+发送叫send
+接收叫receive
+
+
+OSI 七层模型
+表现层
+会话层
+应用层  HTTP POP3 ICMP
+传输层  TCP/UDP
+网络层  IP  DHCP
+数据链路 mac地址
+物理层  网卡 光电信号转换
+
+TCP/IP  三次握手  四次挥手
+A如果想和B建立链接
+
+首先A要给B发送一个sync的建立链接请求
+B会返回Ack的应答 和一个 sync + 1的相应
+A再次告诉B接收到B的相应了
+
+为什么是三次握手  四次挥手？而不是2次握手 3次挥手？
+
+UDP
+
+
+
+
+
+
+
+
+
+
+socket是什么？
+
+如果应用层的所有协议(http、pop3、stmp、ssh等)都要对接 TCP/IP协议族，那这就很麻烦了，所以就将TCP/IP再封装一层只有收、发操作的抽象层
+这一层就是叫做 socket，他是一组接口，根据用户的指定来实现不同的协议，只做两件事，send和receive收发数据，再联合机器上的port就可以连接到指定机器
+上的指定程序(分机号就是端口号。)
+
+Socket是应用层与TCP/IP协议族通信的中间软件抽象层，它是一组接口。在设计模式中，Socket其实就是一个门面模式，
+它把复杂的TCP/IP协议族隐藏在Socket接口后面，对用户来说，一组简单的接口就是全部，让Socket去组织数据，以符合指定的协议。
+
+所以，我们无需深入理解tcp/udp协议，socket已经为我们封装好了，我们只需要遵循socket的规定去编程，写出的程序自然就是遵循tcp/udp标准的。
+
+
+也有人将socket说成ip+port，ip是用来标识互联网中的一台主机的位置，而port是用来标识这台机器上的一个应用程序，
+ip地址是配置到网卡上的，而port是应用程序开启的，ip与port的绑定就标识了互联网中独一无二的一个应用程序
+
+而程序的pid是同一台机器上不同进程或者线程的标识
+
+
+pyhton中使用 socket
+
+import socket
+
+s = socket.TCP/IP
+c = s.connect(a.ip,a.port)
+socket.send(hello)
+socket.receive()
+socket.close()
+
+socket.UDP
+
+
+import socket
+
+s = socket.TCP/IP
+s.listen(0.0.0.0,port)
+waiting()
+socket.receive()
+
+socket.send()
+socket.close()
+
+Socket  Family地址簇
+
+网络层的ipv4、ipv6就是叫地址族
+
+如果没有网络的话 同一个主机上的两个程序间的通信 就使用 AF_UNIX本身的套接字 本机启动了一个socket 来做中转
+socket.AF_UNIX unix 本机进程间通信
+
+socket.AF_INET IPV4
+socket.AF_INET6 IPV6
+
+Socket Types 套接字类型
+socket.SOCK_STREAM  #for tcp 只能调用IP层的东西 不能修改
+socket.SOCK_DGRAM  #for udp 只能调用IP层的东西 不能修改
+socket.SOCK_RAW  #原始套接字，普通的套接字无法处理ICMP、IGMP等网络报文，而SOCK_RAW可以，其次，SOCK_RAW也可以处理特殊的IPV4报文，此外，利用
+原始套接字，可以通过IP_HDRINCL套接字选项由用户构造IP头。 可以修改IP地址头伪造IP地址做洪水攻击
+
+socket.SOCK_RDM  #是一种可靠的UDP形式，即保证交付数据包但不保证顺序，SOCK_RAM用来提供对原始协议的低级访问，在需要执行某些特殊操作时使用，
+如发送ICMP报文。SOCK_RAM通常仅限于高级用户或管理员运行的程序使用

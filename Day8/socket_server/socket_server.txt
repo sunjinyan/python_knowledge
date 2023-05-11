@@ -1,0 +1,83 @@
+
+
+socket的几种类型
+
+socketserver.TCPServer(server_address,RequestHandlerClass,bind_and_active=True)
+socketserver.UDPServer(server_address,RequestHandlerClass,bind_and_active=True)
+
+
+socketserver.UnixStreamServer(server_address,RequestHandlerClass,bind_and_active=True)
+socketserver.UnixDatagramServer(server_address,RequestHandlerClass,bind_and_active=True)
+
+
+BaseServer
+    ↓继承
+TCPServer -继承> UnixStreamServer
+    ↓继承
+UDPServer -继承> UnixDatagramServer
+
+创建 socket server
+
+1、必须自己创建一个请求处理类，并且这个类要继承BaseRequestHandler,重写基类里的handle()
+server =
+2、必须实例化 TCPServer ，并且传递server ip 和 上边创建的请求处理类给这个 TCPserver
+
+server.handle_request()处理一个请求
+
+server.serve_forever()处理多个请求
+
+
+3、server_close()
+
+
+fileno()返回文件描述符
+
+
+handle_request()处理单个请求
+
+#每0.5秒检测是否给我发送了shutdown()信号
+serve_forever(poll_interval=0.5)
+
+#如果有调用serve forever关闭的同时 可以处理些其他动作
+service_actions()
+
+
+#给serve_forever发送信号告诉他停止
+shutdown()
+
+
+
+关闭链接
+server_close()
+
+
+允许重用地址
+allow_reuse_address
+
+
+请求队列大小
+request_queue_size
+
+handle_request()
+
+finish_request()
+
+#获取请求的实例和ip地址
+get_request()
+
+#处理错误
+handle_error()
+
+#
+handle_timeout()
+
+#单个请求
+process_request()
+
+
+#判断请求是否合法
+verify_request()
+
+断点续传的实现
+每次接收都相应接收了多少数据给服务器了，然后点击继续的时候告诉服务器已经接收了多少，
+之后服务器端使用seek来进行讲读取偏移量转到已经收到的数据位置，然后从此处开始继续读取文件，继续回传给客户端
