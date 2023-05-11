@@ -45,7 +45,7 @@ class FtpClient(object):
                 }
                 self.client.send( json.dumps(msg_dic).encode("utf-8")  )
                 print("send",json.dumps(msg_dic).encode("utf-8") )
-                #防止粘包，等服务器确认
+                #防止粘包，等服务器确认,可以定义一个传输协议的 标准错误码，和服务端进行确认
                 server_response = self.client.recv(1024)
                 f = open(filename,"rb")
                 for line in f:
