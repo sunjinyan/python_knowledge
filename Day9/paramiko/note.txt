@@ -1,0 +1,10 @@
+
+
+paramiko
+
+开发堡垒机器之前,先来学习下python的paramiko模块，该模块基于SSH 用于链接远程服务器并执行相关操作
+
+
+
+通过scp传送文件
+scp -rp  ./test/a.txt root@10.0.0.12:/tmp/  -P52113

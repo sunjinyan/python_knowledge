@@ -1,0 +1,95 @@
+什么是线程?
+
+
+
+线程就是操作系统能够调度的最小单位，进程要操作cpu就需要创建一个线程，因为进程只是一个资源的集合(程序运行的上下文)，是程序执行的环境，而真正进行工作的是这一段线程指令
+就是这一段线程指令的工作来与cpu进行交互
+
+在传统操作系统中，每个进程有一个地址空间，而且默认就有一个控制线程
+
+线程顾名思义，就是一条流水线工作的过程，一条流水线必须属于一个车间，一个车间的工作过程是一个进程
+
+车间负责把资源整合到一起，是一个资源单位，而一个车间内至少有一个流水线
+
+流水线的工作需要电源，电源就相当于cpu
+
+所以，进程只是用来把资源集中到一起（进程只是一个资源单位，或者说资源集合），而线程才是cpu上的执行单位。
+
+多线程（即多个控制线程）的概念是，在一个进程中存在多个控制线程，多个控制线程共享该进程的地址空间，相当于一个车间内有多条流水线，都共用一个车间的资源。
+
+例如，北京地铁与上海地铁是不同的进程，而北京地铁里的13号线是一个线程，北京地铁所有的线路共享北京地铁所有的资源，比如所有的乘客可以被所有线路拉。
+
+
+二 线程的创建开销小
+
+创建进程的开销要远大于线程？
+
+如果我们的软件是一个工厂，该工厂有多条流水线，流水线工作需要电源，电源只有一个即cpu（单核cpu）
+
+一个车间就是一个进程，一个车间至少一条流水线（一个进程至少一个线程）
+
+创建一个进程，就是创建一个车间（申请空间，在该空间内建至少一条流水线）
+
+而建线程，就只是在一个车间内造一条流水线，无需申请空间，所以创建开销小
+
+进程之间是竞争关系，线程之间是协作关系？
+
+车间直接是竞争/抢电源的关系，竞争（不同的进程直接是竞争关系，是不同的程序员写的程序运行的，迅雷抢占其他进程的网速，360把其他进程当做病毒干死）
+一个车间的不同流水线式协同工作的关系（同一个进程的线程之间是合作关系，是同一个程序写的程序内开启动，迅雷内的线程是合作关系，不会自己干自己）
+
+
+
+
+
+
+
+
+
+
+
+
+三 线程与进程的区别
+
+线程共享地址空间
+Threads share the address space of the process that created it;
+进程拥有自己的进程共空间
+processes have their own address space.
+
+线程可以访问进程间的共享变量
+Threads have direct access to the data segment of its process;
+进程则是复制一份相同的数据
+processes have their own copy of the data segment of the parent process.
+
+线程可以访问同一进程内的其他线程
+Threads can directly communicate with other threads of its process;
+进程必须使用内部进程
+processes must use interprocess communication to communicate with sibling processes.
+
+线程容易创建，资源消耗小
+New threads are easily created;
+新进程需要父进程的副本
+new processes require duplication of the parent process.
+
+线程可以对同一进程的线程进行相当大的控制
+Threads can exercise considerable control over threads of the same process;
+进程只能对子进程进行控制
+processes can only exercise control over child processes.
+
+对主线程的更改(取消、优先级更改等)可能会影响同一进程中其他线程的行为
+Changes to the main thread (cancellation, priority change, etc.) may affect the behavior
+of the other threads of the process;
+
+changes to the parent process does not affect child processes.
+对父进程的更改不会影响子进程。
+
+四 为何要用多线程
+多线程指的是，在一个进程中开启多个线程，简单的讲：如果多个任务共用一块地址空间，那么必须在一个进程内开启多个线程。详细的讲分为4点：
+
+1. 多线程共享一个进程的地址空间
+2. 线程比进程更轻量级，线程比进程更容易创建可撤销，在许多操作系统中，创建一个线程比创建一个进程要快10-100倍，
+在有大量线程需要动态和快速修改时，这一特性很有用
+
+3. 若多个线程都是cpu密集型的，那么并不能获得性能上的增强，但是如果存在大量的计算和大量的I/O处理，拥有多个线程允许这些活动彼此重叠运行，
+从而会加快程序执行的速度。
+
+4. 在多cpu系统中，为了最大限度的利用多核，可以开启多个线程，比开进程开销要小的多。（这一条并不适用于python）
