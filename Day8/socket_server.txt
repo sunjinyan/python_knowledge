@@ -9,6 +9,8 @@ socketserver.UDPServer(server_address,RequestHandlerClass,bind_and_active=True)
 socketserver.UnixStreamServer(server_address,RequestHandlerClass,bind_and_active=True)
 socketserver.UnixDatagramServer(server_address,RequestHandlerClass,bind_and_active=True)
 
+ server = socketserver.ThreadingTCPServer((HOST, PORT), MyTCPHandler) #多线程
+# server = socketserver.ForkingTCPServer((HOST, PORT), MyTCPHandler) 多进程
 
 BaseServer
     ↓继承

@@ -40,5 +40,6 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 if __name__ == "__main__":
     HOST, PORT = "localhost", 9999
     # Create the server, binding to localhost on port 9999
-    server = socketserver.ThreadingTCPServer((HOST, PORT), MyTCPHandler)
+    server = socketserver.ThreadingTCPServer((HOST, PORT), MyTCPHandler) #多线程
+    # server = socketserver.ForkingTCPServer((HOST, PORT), MyTCPHandler) 多进程
     server.serve_forever()

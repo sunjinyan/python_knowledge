@@ -1,0 +1,431 @@
+首先列一下，sellect、poll、epoll三者的区别
+select
+select最早于1983年出现在4.2BSD中，它通过一个select()系统调用来监视多个文件描述符的数组，当select()返回后，
+该数组中就绪的文件描述符便会被内核修改标志位，使得进程可以获得这些文件描述符从而进行后续的读写操作。
+
+select目前几乎在所有的平台上支持，其良好跨平台支持也是它的一个优点，事实上从现在看来，这也是它所剩不多的优点之一。
+
+select的一个缺点在于单个进程能够监视的文件描述符的数量存在最大限制，在Linux上一般为1024，不过可以通过修改宏定义甚至重新编译内核的方式提升这一限制。
+
+另外，select()所维护的存储大量文件描述符的数据结构，随着文件描述符数量的增大，其复制的开销也线性增长。同时，由
+于网络响应时间的延迟使得大量TCP连接处于非活跃状态，但调用select()会对所有socket进行一次线性扫描，所以这也浪费了一定的开销。
+
+poll
+poll在1986年诞生于System V Release 3，它和select在本质上没有多大差别，但是poll没有最大文件描述符数量的限制。
+
+poll和select同样存在一个缺点就是，包含大量文件描述符的数组被整体复制于用户态和内核的地址空间之间，而不论这些文件描述符是否就绪，
+它的开销随着文件描述符数量的增加而线性增大。
+
+另外，select()和poll()将就绪的文件描述符告诉进程后，如果进程没有对其进行IO操作，那么下次调用select()和poll()的时候将再次报告这些文件描述符，
+所以它们一般不会丢失就绪的消息，这种方式称为水平触发（Level Triggered）。
+
+epoll
+直到Linux2.6才出现了由内核直接支持的实现方法，那就是epoll，它几乎具备了之前所说的一切优点，被公认为Linux2.6下性能最好的多路I/O就绪通知方法。
+
+epoll可以同时支持水平触发和边缘触发（Edge Triggered，只告诉进程哪些文件描述符刚刚变为就绪状态，它只说一遍，如果我们没有采取行动，
+那么它将不会再次告知，这种方式称为边缘触发），理论上边缘触发的性能要更高一些，但是代码实现相当复杂。
+
+epoll同样只告知那些就绪的文件描述符，而且当我们调用epoll_wait()获得就绪文件描述符时，返回的不是实际的描述符，而是一个代表就绪描述符数量的值，
+你只需要去epoll指定的一个数组中依次取得相应数量的文件描述符即可，这里也使用了内存映射（mmap）技术，这样便彻底省掉了这些文件描述符在系统调用时复制的开销。
+
+另一个本质的改进在于epoll采用基于事件的就绪通知方式。在select/poll中，进程只有在调用一定的方法后，内核才对所有监视的文件描述符进行扫描，
+而epoll事先通过epoll_ctl()来注册一个文件描述符，一旦基于某个文件描述符就绪时，内核会采用类似callback的回调机制，迅速激活这个文件描述符，
+当进程调用epoll_wait()时便得到通知。
+
+
+
+
+
+Python select
+
+Python的select()方法直接调用操作系统的IO接口，它监控sockets,open files, and pipes(所有带fileno()方法的文件句柄)何时变成readable
+和writeable, 或者通信错误，select()使得同时监控多个连接变的简单，并且这比写一个长循环来等待和监控多客户端连接要高效，
+因为select直接通过操作系统提供的C的网络接口进行操作，而不是通过Python的解释器。
+
+注意：Using Python’s file objects with select() works for Unix, but is not supported under Windows.
+
+接下来通过echo server例子要以了解select 是如何通过单进程实现同时处理多个非阻塞的socket连接的
+
+import select
+import socket
+import sys
+import Queue
+
+# Create a TCP/IP socket
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setblocking(0)
+
+# Bind the socket to the port
+server_address = ('localhost', 10000)
+print >>sys.stderr, 'starting up on %s port %s' % server_address
+server.bind(server_address)
+
+# Listen for incoming connections
+server.listen(5)
+
+select()方法接收并监控3个通信列表， 第一个是所有的输入的data,就是指外部发过来的数据，第2个是监控和接收所有要发出去的data(outgoing data),
+第3个监控错误信息，接下来我们需要创建2个列表来包含输入和输出信息来传给select().
+
+# Sockets from which we expect to read
+inputs = [ server ]
+
+# Sockets to which we expect to write
+outputs = [ ]
+
+
+所有客户端的进来的连接和数据将会被server的主循环程序放在上面的list中处理，我们现在的server端需要等待连接可写（writable)之后才能过来，
+然后接收数据并返回(因此不是在接收到数据之后就立刻返回)，因为每个连接要把输入或输出的数据先缓存到queue里，然后再由select取出来再发出去。
+
+Connections are added to and removed from these lists by the server main loop. Since this version of the server
+ is going to wait for a socket to become writable before sending any data (instead of immediately sending the reply),
+ each output connection needs a queue to act as a buffer for the data to be sent through it.
+
+# Outgoing message queues (socket:Queue)
+message_queues = {}
+The main portion of the server program loops, calling select() to block and wait for network activity.
+
+下面是此程序的主循环，调用select()时会阻塞和等待直到新的连接和数据进来
+
+while inputs:
+
+    # Wait for at least one of the sockets to be ready for processing
+    print >>sys.stderr, '\nwaiting for the next event'
+    readable, writable, exceptional = select.select(inputs, outputs, inputs)
+ 当你把inputs,outputs,exceptional(这里跟inputs共用)传给select()后，它返回3个新的list，我们上面将他们分别赋值为readable,writable,
+ exceptional, 所有在readable list中的socket连接代表有数据可接收(recv),所有在writable
+ list中的存放着你可以对其进行发送(send)操作的socket连接，当连接通信出现error时会把error写到exceptional列表中。
+
+select() returns three new lists, containing subsets of the contents of the lists passed in. All of the
+sockets in the readable list have incoming data buffered and available to be read. All of the sockets in the
+writable list have free space in their buffer and can be written to. The sockets returned in exceptional have had an
+error (the actual definition of “exceptional condition” depends on the platform).
+
+
+
+Readable list 中的socket 可以有3种可能状态，第一种是如果这个socket是main "server" socket,它负责监听客户端的连接，如果这个main server
+socket出现在readable里，那代表这是server端已经ready来接收一个新的连接进来了，为了让这个main server能同时处理多个连接，
+在下面的代码里，我们把这个main server的socket设置为非阻塞模式。
+
+The “readable” sockets represent three possible cases. If the socket is the main “server” socket, the one being
+used to listen for connections, then the “readable” condition means it is ready to accept another incoming connection.
+In addition to adding the new connection to the list of inputs to monitor, this section sets the client socket to not block.
+
+# Handle inputs
+for s in readable:
+
+    if s is server:
+        # A "readable" server socket is ready to accept a connection
+        connection, client_address = s.accept()
+        print >>sys.stderr, 'new connection from', client_address
+        connection.setblocking(0)
+        inputs.append(connection)
+
+        # Give the connection a queue for data we want to send
+        message_queues[connection] = Queue.Queue()
+第二种情况是这个socket是已经建立了的连接，它把数据发了过来，这个时候你就可以通过recv()来接收它发过来的数据，
+然后把接收到的数据放到queue里，这样你就可以把接收到的数据再传回给客户端了。
+
+The next case is an established connection with a client that has sent data. The data is read with recv(),
+then placed on the queue so it can be sent through the socket and back to the client.
+
+else:
+     data = s.recv(1024)
+     if data:
+         # A readable client socket has data
+         print >>sys.stderr, 'received "%s" from %s' % (data, s.getpeername())
+         message_queues[s].put(data)
+         # Add output channel for response
+         if s not in outputs:
+             outputs.append(s)
+
+第三种情况就是这个客户端已经断开了，所以你再通过recv()接收到的数据就为空了，所以这个时候你就可以把这个跟客户端的连接关闭了。
+
+A readable socket without data available is from a client that has disconnected, and the stream is ready to be closed.
+
+else:
+    # Interpret empty result as closed connection
+    print >>sys.stderr, 'closing', client_address, 'after reading no data'
+    # Stop listening for input on the connection
+    if s in outputs:
+        outputs.remove(s)  #既然客户端都断开了，我就不用再给它返回数据了，所以这时候如果这个客户端的连接对象还在outputs列表中，就把它删掉
+    inputs.remove(s)    #inputs中也删除掉
+    s.close()           #把这个连接关闭掉
+
+    # Remove message queue
+    del message_queues[s]
+
+对于writable list中的socket，也有几种状态，如果这个客户端连接在跟它对应的queue里有数据，就把这个数据取出来再发回给这个客户端，
+否则就把这个连接从output list中移除，这样下一次循环select()调用时检测到outputs list中没有这个连接，那就会认为这个连接还处于非活动状态
+
+There are fewer cases for the writable connections. If there is data in the queue for a connection,
+the next message is sent. Otherwise, the connection is removed from the list of output connections so that the next
+time through the loop select() does not indicate that the socket is ready to send data.
+# Handle outputs
+for s in writable:
+    try:
+        next_msg = message_queues[s].get_nowait()
+    except Queue.Empty:
+        # No messages waiting so stop checking for writability.
+        print >>sys.stderr, 'output queue for', s.getpeername(), 'is empty'
+        outputs.remove(s)
+    else:
+        print >>sys.stderr, 'sending "%s" to %s' % (next_msg, s.getpeername())
+        s.send(next_msg)
+
+最后，如果在跟某个socket连接通信过程中出了错误，就把这个连接对象在inputs\outputs\message_queue中都删除，再把连接关闭掉
+
+# Handle "exceptional conditions"
+for s in exceptional:
+    print >>sys.stderr, 'handling exceptional condition for', s.getpeername()
+    # Stop listening for input on the connection
+    inputs.remove(s)
+    if s in outputs:
+        outputs.remove(s)
+    s.close()
+
+    # Remove message queue
+    del message_queues[s]
+
+客户端
+
+下面的这个是客户端程序展示了如何通过select()对socket进行管理并与多个连接同时进行交互，
+
+The example client program uses two sockets to demonstrate how the server with select()
+manages multiple connections at the same time. The client starts by connecting each TCP/IP socket to the server.
+
+import socket
+import sys
+
+messages = [ 'This is the message. ',
+             'It will be sent ',
+             'in parts.',
+             ]
+server_address = ('localhost', 10000)
+
+# Create a TCP/IP socket
+socks = [ socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+          socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+          ]
+
+# Connect the socket to the port where the server is listening
+print >>sys.stderr, 'connecting to %s port %s' % server_address
+for s in socks:
+    s.connect(server_address)
+
+接下来通过循环通过每个socket连接给server发送和接收数据。
+Then it sends one pieces of the message at a time via each socket,
+and reads all responses available after writing new data.
+
+for message in messages:
+
+    # Send messages on both sockets
+    for s in socks:
+        print >>sys.stderr, '%s: sending "%s"' % (s.getsockname(), message)
+        s.send(message)
+
+    # Read responses on both sockets
+    for s in socks:
+        data = s.recv(1024)
+        print >>sys.stderr, '%s: received "%s"' % (s.getsockname(), data)
+        if not data:
+            print >>sys.stderr, 'closing socket', s.getsockname()
+
+最后服务器端的完整代码如下：
+
+#_*_coding:utf-8_*_
+__author__ = 'Alex Li'
+
+import select
+import socket
+import sys
+import queue
+
+# Create a TCP/IP socket
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setblocking(False)
+
+# Bind the socket to the port
+server_address = ('localhost', 10000)
+print(sys.stderr, 'starting up on %s port %s' % server_address)
+server.bind(server_address)
+
+# Listen for incoming connections
+server.listen(5)
+
+# Sockets from which we expect to read
+inputs = [ server ]
+
+# Sockets to which we expect to write
+outputs = [ ]
+
+message_queues = {}
+while inputs:
+
+    # Wait for at least one of the sockets to be ready for processing
+    print( '\nwaiting for the next event')
+    readable, writable, exceptional = select.select(inputs, outputs, inputs)
+    # Handle inputs
+    for s in readable:
+
+        if s is server:
+            # A "readable" server socket is ready to accept a connection
+            connection, client_address = s.accept()
+            print('new connection from', client_address)
+            connection.setblocking(False)
+            inputs.append(connection)
+
+            # Give the connection a queue for data we want to send
+            message_queues[connection] = queue.Queue()
+        else:
+            data = s.recv(1024)
+            if data:
+                # A readable client socket has data
+                print(sys.stderr, 'received "%s" from %s' % (data, s.getpeername()) )
+                message_queues[s].put(data)
+                # Add output channel for response
+                if s not in outputs:
+                    outputs.append(s)
+            else:
+                # Interpret empty result as closed connection
+                print('closing', client_address, 'after reading no data')
+                # Stop listening for input on the connection
+                if s in outputs:
+                    outputs.remove(s)  #既然客户端都断开了，我就不用再给它返回数据了，所以这时候如果这个客户端的连接对象还在outputs列表中，就把它删掉
+                inputs.remove(s)    #inputs中也删除掉
+                s.close()           #把这个连接关闭掉
+
+                # Remove message queue
+                del message_queues[s]
+    # Handle outputs
+    for s in writable:
+        try:
+            next_msg = message_queues[s].get_nowait()
+        except queue.Empty:
+            # No messages waiting so stop checking for writability.
+            print('output queue for', s.getpeername(), 'is empty')
+            outputs.remove(s)
+        else:
+            print( 'sending "%s" to %s' % (next_msg, s.getpeername()))
+            s.send(next_msg)
+    # Handle "exceptional conditions"
+    for s in exceptional:
+        print('handling exceptional condition for', s.getpeername() )
+        # Stop listening for input on the connection
+        inputs.remove(s)
+        if s in outputs:
+            outputs.remove(s)
+        s.close()
+
+        # Remove message queue
+        del message_queues[s]
+
+<strong style="font-family: verdana, Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.5; background-color:
+rgb(255, 255, 255); --darkreader-inline-bgcolor:#131516;" data-darkreader-inline-bgcolor="">客户端的完整代码如下：</strong>
+
+__author__ = 'jieli'
+import socket
+import sys
+
+messages = [ 'This is the message. ',
+             'It will be sent ',
+             'in parts.',
+             ]
+server_address = ('localhost', 10000)
+
+# Create a TCP/IP socket
+socks = [ socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+          socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+          ]
+
+# Connect the socket to the port where the server is listening
+print >>sys.stderr, 'connecting to %s port %s' % server_address
+for s in socks:
+    s.connect(server_address)
+
+for message in messages:
+
+    # Send messages on both sockets
+    for s in socks:
+        print >>sys.stderr, '%s: sending "%s"' % (s.getsockname(), message)
+        s.send(message)
+
+    # Read responses on both sockets
+    for s in socks:
+        data = s.recv(1024)
+        print >>sys.stderr, '%s: received "%s"' % (s.getsockname(), data)
+        if not data:
+            print >>sys.stderr, 'closing socket', s.getsockname()
+            s.close()
+
+Run the server in one window and the client in another. The output will look like this, with different port numbers.
+
+$ python ./select_echo_server.py
+starting up on localhost port 10000
+
+waiting for the next event
+new connection from ('127.0.0.1', 55821)
+
+waiting for the next event
+new connection from ('127.0.0.1', 55822)
+received "This is the message. " from ('127.0.0.1', 55821)
+
+waiting for the next event
+sending "This is the message. " to ('127.0.0.1', 55821)
+
+waiting for the next event
+output queue for ('127.0.0.1', 55821) is empty
+
+waiting for the next event
+received "This is the message. " from ('127.0.0.1', 55822)
+
+waiting for the next event
+sending "This is the message. " to ('127.0.0.1', 55822)
+
+waiting for the next event
+output queue for ('127.0.0.1', 55822) is empty
+
+waiting for the next event
+received "It will be sent " from ('127.0.0.1', 55821)
+received "It will be sent " from ('127.0.0.1', 55822)
+
+waiting for the next event
+sending "It will be sent " to ('127.0.0.1', 55821)
+sending "It will be sent " to ('127.0.0.1', 55822)
+
+waiting for the next event
+output queue for ('127.0.0.1', 55821) is empty
+output queue for ('127.0.0.1', 55822) is empty
+
+waiting for the next event
+received "in parts." from ('127.0.0.1', 55821)
+received "in parts." from ('127.0.0.1', 55822)
+
+waiting for the next event
+sending "in parts." to ('127.0.0.1', 55821)
+sending "in parts." to ('127.0.0.1', 55822)
+
+waiting for the next event
+output queue for ('127.0.0.1', 55821) is empty
+output queue for ('127.0.0.1', 55822) is empty
+
+waiting for the next event
+closing ('127.0.0.1', 55822) after reading no data
+closing ('127.0.0.1', 55822) after reading no data
+
+waiting for the next event
+The client output shows the data being sent and received using both sockets.
+
+$ python ./select_echo_multiclient.py
+connecting to localhost port 10000
+('127.0.0.1', 55821): sending "This is the message. "
+('127.0.0.1', 55822): sending "This is the message. "
+('127.0.0.1', 55821): received "This is the message. "
+('127.0.0.1', 55822): received "This is the message. "
+('127.0.0.1', 55821): sending "It will be sent "
+('127.0.0.1', 55822): sending "It will be sent "
+('127.0.0.1', 55821): received "It will be sent "
+('127.0.0.1', 55822): received "It will be sent "
+('127.0.0.1', 55821): sending "in parts."
+('127.0.0.1', 55822): sending "in parts."
+('127.0.0.1', 55821): received "in parts."
+('127.0.0.1', 55822): received "in parts."
