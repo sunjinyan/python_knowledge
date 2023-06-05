@@ -1,0 +1,25 @@
+更细致的消息过滤
+Although using the direct exchange improved our system, it still has limitations - it can't do routing based on multiple criteria.
+
+In our logging system we might want to subscribe to not only logs based on severity, but also based on the source which emitted the log. You might know this concept from the syslog unix tool, which routes logs based on both severity (info/warn/crit...) and facility (auth/cron/kern...).
+
+That would give us a lot of flexibility - we may want to listen to just critical errors coming from 'cron' but also all logs from 'kern'.
+
+
+
+
+To receive all the logs run:
+
+python receive_logs_topic.py "#"
+To receive all logs from the facility "kern":
+
+python receive_logs_topic.py "kern.*"
+Or if you want to hear only about "critical" logs:
+
+python receive_logs_topic.py "*.critical"
+You can create multiple bindings:
+
+python receive_logs_topic.py "kern.*" "*.critical"
+And to emit a log with a routing key "kern.critical" type:
+
+python emit_log_topic.py "kern.critical" "A critical kernel error"
